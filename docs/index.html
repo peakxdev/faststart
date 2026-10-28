@@ -3,74 +3,243 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>faststart: fix slow-starting videos</title>
-<meta name="description" content="Check and fix MP4/MOV files that start slowly on the web. Runs in your browser; nothing is uploaded.">
+<title>faststart — fix videos that are slow to start</title>
+<meta name="description" content="Check and fix MP4 and MOV files whose index sits at the end of the file. Lossless, in your browser, nothing uploaded.">
+<meta property="og:title" content="faststart — fix videos that are slow to start">
+<meta property="og:description" content="Moves the MP4 index to the front so web players can start straight away. Lossless, runs in your browser.">
+<meta property="og:image" content="https://peakxdev.github.io/faststart/og.png">
+<meta name="theme-color" content="#f3efe6">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2317140f'/%3E%3Crect x='6' y='11' width='6' height='10' rx='1.5' fill='%23e8572a'/%3E%3Crect x='14' y='11' width='12' height='10' rx='1.5' fill='%23f3efe6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0b0d11;--card:#141821;--line:#262c38;--fg:#eef1f5;--fg2:#a9b1bf;--acc:#3ee0c2;--bad:#f5b041;--err:#f87171}
-@media (prefers-color-scheme: light){:root{--bg:#f6f7f9;--card:#fff;--line:#dfe3ea;--fg:#0f1520;--fg2:#4d5666;--acc:#0b8f78;--bad:#a8650a;--err:#c53030}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:760px;margin:0 auto;padding:48px 16px 64px}
-h1{font-size:clamp(30px,6vw,46px);letter-spacing:-.03em;margin:0}h1 span{color:var(--acc)}
-p{color:var(--fg2)}code{background:var(--card);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font-size:.9em}
-#drop{display:block;margin-top:24px;border:2px dashed var(--line);border-radius:16px;padding:40px 16px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .2s}
-#drop.over{border-color:var(--acc)}#drop b{display:block;font-size:18px;margin-bottom:4px;color:var(--fg)}
+:root{
+  --paper:#f3efe6;--paper2:#ebe5d8;--card:#fbf9f4;--ink:#17140f;--ink2:#4a443a;--ink3:#857d70;--rule:#d9d1c1;
+  --moov:#e8572a;--mdat:#2d2a24;--ftyp:#a39a89;--other:#c9bfac;--ok:#2f7d4f;
+  --serif:"Instrument Serif",Georgia,serif;--sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --paper:#15130f;--paper2:#1d1a15;--card:#1f1c17;--ink:#f1ece2;--ink2:#c3baab;--ink3:#8a8273;--rule:#332e26;
+  --mdat:#d9d1c1;--ftyp:#6f675a;--other:#4a4339;--ok:#6cc08d}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration-thickness:1px;text-underline-offset:3px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--rule)}
+.mark{font:600 15px var(--mono);letter-spacing:-.01em;display:flex;align-items:center;gap:10px;text-decoration:none}
+.mark i{display:inline-flex;gap:2px}.mark i b{display:block;height:14px;border-radius:2px}
+nav.top a{font:500 14px var(--mono);color:var(--ink2);text-decoration:none;margin-left:22px}
+nav.top a:hover{color:var(--ink)}
+
+.hero{display:grid;grid-template-columns:minmax(0,1fr);gap:40px;padding:72px 0 56px;border-bottom:1px solid var(--rule)}
+@media(max-width:600px){nav.top a:first-child{display:none}}
+@media(min-width:900px){.hero{grid-template-columns:1.05fr .95fr;align-items:end}}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+h1{font:400 clamp(44px,6.4vw,76px)/.98 var(--serif);letter-spacing:-.015em;margin:16px 0 0}
+h1 em{color:var(--moov)}
+.lede{font-size:18px;color:var(--ink2);max-width:46ch;margin:22px 0 0}
+
+/* the file diagram */
+.diagram{margin:0;background:var(--card);border:1px solid var(--rule);border-radius:4px;padding:22px 22px 18px}
+.diagram .lbl{display:flex;justify-content:space-between;font:500 11.5px var(--mono);color:var(--ink3);letter-spacing:.06em;text-transform:uppercase}
+.strip{position:relative;height:44px;margin:10px 0 18px;display:flex;gap:3px}
+.strip span{height:100%;border-radius:2px;display:flex;align-items:center;justify-content:center;font:600 11px var(--mono);color:var(--paper);overflow:hidden;white-space:nowrap}
+.a-ftyp{background:var(--ftyp)}.a-mdat{background:var(--mdat)}.a-moov{background:var(--moov)}.a-other{background:var(--other);color:var(--ink2)!important}
+.anim .a-moov{animation:hop 6s cubic-bezier(.7,0,.3,1) infinite}
+.anim .a-mdat{animation:shove 6s cubic-bezier(.7,0,.3,1) infinite}
+@keyframes hop{0%,30%{transform:translateX(0)}45%,85%{transform:translateX(calc(-1 * var(--d)))}100%{transform:translateX(0)}}
+@keyframes shove{0%,30%{transform:translateX(0)}45%,85%{transform:translateX(var(--m))}100%{transform:translateX(0)}}
+@media (prefers-reduced-motion: reduce){.anim .a-moov,.anim .a-mdat{animation:none}}
+.caption{font-size:14px;color:var(--ink2);margin:0}
+.caption b{color:var(--moov);font-weight:600}
+
+/* tool */
+section{padding:56px 0;border-bottom:1px solid var(--rule)}
+h2{font:400 34px/1.1 var(--serif);margin:0 0 6px}
+.sub{color:var(--ink2);margin:0 0 24px;max-width:60ch}
+#drop{display:block;border:1.5px dashed var(--ink3);border-radius:4px;padding:38px 20px;text-align:center;cursor:pointer;background:var(--card);transition:background .15s,border-color .15s}
+#drop:hover,#drop.over{border-color:var(--moov);background:var(--paper2)}
+#drop strong{display:block;font:400 26px var(--serif)}
+#drop span{font-size:14px;color:var(--ink3)}
 input[type=file]{display:none}
-ul{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:10px}
-li{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.name{flex:1;min-width:180px;word-break:break-all}.name small{display:block;color:var(--fg2)}
-.st{font-weight:700;font-size:14px}.ok{color:var(--acc)}.slow{color:var(--bad)}.err{color:var(--err)}
-button,a.btn{font:inherit;font-weight:700;font-size:14px;border:0;border-radius:99px;padding:8px 14px;background:var(--acc);color:#04221c;cursor:pointer;text-decoration:none}
-.how{margin-top:36px;border-top:1px solid var(--line);padding-top:20px}
-footer{margin-top:40px;color:var(--fg2);font-size:14px}footer a{color:var(--acc)}
+.actions{display:flex;gap:14px;align-items:center;margin-top:14px;flex-wrap:wrap;font-size:14px;color:var(--ink3)}
+.btn{font:500 14px var(--mono);border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:9px 14px;border-radius:3px;cursor:pointer;text-decoration:none;display:inline-flex;gap:8px;align-items:center}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:disabled{opacity:.5;cursor:default}
+#list{list-style:none;padding:0;margin:26px 0 0;display:grid;gap:12px}
+#list li{background:var(--card);border:1px solid var(--rule);border-radius:4px;padding:16px 18px}
+.row1{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.fname{font:500 15px var(--mono);word-break:break-all}
+.fmeta{font:13px var(--mono);color:var(--ink3)}
+.state{font-size:14.5px;margin:4px 0 0;color:var(--ink2)}
+.state.slow b{color:var(--moov)}.state.ok b{color:var(--ok)}.state.err b{color:var(--moov)}
+#list .strip{height:26px;margin:12px 0 4px}
+#list .strip span{font-size:10px}
+.legend{display:flex;gap:16px;font:12px var(--mono);color:var(--ink3);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.row3{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.row3 video{width:100%;max-width:360px;border-radius:3px;background:#000;margin-top:4px}
+
+/* explainer */
+.cols{display:grid;gap:28px}
+@media(min-width:820px){.cols{grid-template-columns:repeat(3,1fr)}}
+.cols h3{font:600 15px var(--sans);margin:0 0 6px}
+.cols p{margin:0;color:var(--ink2);font-size:15px}
+.num{font:500 12px var(--mono);color:var(--moov);display:block;margin-bottom:8px}
+pre{margin:0;background:var(--ink);color:var(--paper);border-radius:4px;padding:18px 20px;overflow-x:auto;font:13.5px/1.7 var(--mono)}
+pre .c{color:#9c9384}
+.copy{position:relative}.copy button{position:absolute;top:10px;right:10px;font:500 12px var(--mono);background:transparent;color:#d6cfc0;border:1px solid #4a4439;border-radius:3px;padding:4px 8px;cursor:pointer}
+dl{margin:0;display:grid;gap:18px}
+@media(min-width:820px){dl{grid-template-columns:1fr 1fr;column-gap:40px}}
+dt{font-weight:600}dd{margin:4px 0 0;color:var(--ink2)}
+footer{padding:28px 0 48px;font:13px var(--mono);color:var(--ink3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+code{font:13.5px var(--mono);background:var(--paper2);padding:1px 5px;border-radius:3px}
 </style>
 </head>
 <body>
-<main>
-  <h1>fast<span>start</span></h1>
-  <p>Some videos take ages to start on websites and phones, because their index (the <code>moov</code> atom) sits at the <b>end</b> of the file. The player has to fetch the end before it can play the start. Drop your videos here to check them, and fix them without re-encoding: same quality, same size.</p>
-  <label id="drop"><input id="file" type="file" accept="video/mp4,video/quicktime,.mp4,.m4v,.mov,.m4a" multiple><b>Drop MP4 / MOV files here</b>or click to choose. Everything runs in your browser; nothing is uploaded.</label>
-  <ul id="list"></ul>
-  <div class="how">
-    <h2 style="font-size:20px">How it works</h2>
-    <p>The page reads only the atom headers and the index, never the video data. To fix a file it moves the index to the front and updates the chunk offsets inside it, then stitches the original pieces back together. It's the same result as <code>ffmpeg -c copy -movflags +faststart</code>.</p>
-    <p>For folders, servers and CI, use the command-line tool: <code>pip install git+https://github.com/peakxdev/faststart</code>, then <code>faststart check videos/</code>.</p>
+<div class="wrap">
+  <header class="top">
+    <a class="mark" href="./"><i><b style="width:6px;background:var(--moov)"></b><b style="width:16px;background:var(--ink)"></b></i>faststart</a>
+    <nav class="top"><a href="#tool">Check a file</a><a href="#cli">CLI</a><a href="https://github.com/peakxdev/faststart">GitHub</a></nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <span class="eyebrow">MP4 · MOV · M4V · lossless</span>
+      <h1>Slow to start?<br>The index is <em>at the end.</em></h1>
+      <p class="lede">A video player can't begin until it has read the file's index, the <code>moov</code> box. Many tools write it last, so the browser has to fetch the end of the file before it can play the beginning. This moves it to the front. Same video, same quality, same size.</p>
+    </div>
+    <figure class="diagram" aria-label="Diagram: the moov box moves from the end of the file to the front">
+      <div class="lbl"><span>Start of file</span><span>End</span></div>
+      <div class="strip anim" id="hero-strip">
+        <span class="a-ftyp" style="flex:0 0 5%" title="ftyp"></span>
+        <span class="a-mdat" style="flex:1 1 auto">mdat · media</span>
+        <span class="a-moov" style="flex:0 0 14%">moov</span>
+      </div>
+      <p class="caption">The player reads left to right. With <b>moov</b> last, it has to jump to the end first. faststart puts it straight after the header.</p>
+    </figure>
   </div>
-  <footer>Open source (MIT) · <a href="https://github.com/peakxdev/faststart">github.com/peakxdev/faststart</a> · by Peak Software</footer>
-</main>
+
+  <section id="tool">
+    <h2>Check your videos</h2>
+    <p class="sub">Drop files below. The page reads only the box headers and the index, never the video itself, so large files are fine and nothing leaves your computer.</p>
+    <label id="drop"><input id="file" type="file" accept="video/mp4,video/quicktime,.mp4,.m4v,.mov,.m4a,.3gp" multiple><strong>Drop MP4 or MOV files</strong><span>or click to choose · processed locally in your browser</span></label>
+    <div class="actions"><button class="btn ghost" id="sample" type="button">Try a sample file</button><span>A 4-second test clip, saved the slow way.</span></div>
+    <ul id="list"></ul>
+  </section>
+
+  <section>
+    <h2>What actually happens</h2>
+    <p class="sub">An MP4 is a row of boxes. Three matter here.</p>
+    <div class="cols">
+      <div><span class="num">01 · ftyp</span><h3>The header</h3><p>A few bytes that say what kind of file this is. Always first.</p></div>
+      <div><span class="num">02 · mdat</span><h3>The media</h3><p>All the compressed video and audio. This is almost the whole file.</p></div>
+      <div><span class="num">03 · moov</span><h3>The index</h3><p>Where every frame lives, the duration, the tracks. The player needs it before frame one. Moving it means rewriting the chunk offsets inside it, which is all faststart changes.</p></div>
+    </div>
+  </section>
+
+  <section id="cli">
+    <h2>For folders, servers and CI</h2>
+    <p class="sub">The command-line version checks whole media folders and exits non-zero when it finds a slow file, so it can guard an upload step or a build.</p>
+    <div class="copy"><button type="button" data-copy>copy</button><pre><span class="c"># install</span>
+pip install git+https://github.com/peakxdev/faststart
+
+<span class="c"># list slow files (exit 1 if any)</span>
+faststart check media/
+
+<span class="c"># write fixed copies, or replace in place after verifying</span>
+faststart fix media/ -o fixed/
+faststart fix clip.mp4 --in-place</pre></div>
+    <p class="sub" style="margin-top:16px">Encoding new files yourself? Add <code>-movflags +faststart</code> to your ffmpeg command and they'll be right from the start.</p>
+  </section>
+
+  <section>
+    <h2>Questions</h2>
+    <dl>
+      <div><dt>Does it re-encode or change quality?</dt><dd>No. The video and audio bytes are copied untouched. Only the index moves, and its offsets are updated to match.</dd></div>
+      <div><dt>Is anything uploaded?</dt><dd>No. The page is static and the work happens in your browser. Check the network tab if you like.</dd></div>
+      <div><dt>How big a file can it handle?</dt><dd>Large ones. It reads the index (usually well under a megabyte) and stitches the rest together from slices of your original file.</dd></div>
+      <div><dt>What about WebM or MKV?</dt><dd>Those use a different layout and aren't covered. Fragmented MP4, the kind used for streaming, is already fine and is left alone.</dd></div>
+    </dl>
+  </section>
+
+  <footer><span>MIT licence · <a href="https://github.com/peakxdev/faststart">source on GitHub</a></span><span>Made by <a href="https://peaksoftware.co.za">Peak Software</a></span></footer>
+</div>
+
 <script type="module">
 import { check, fix } from './faststart.js'
-const list = document.getElementById('list'), drop = document.getElementById('drop'), input = document.getElementById('file')
-const mb = (n) => (n / 1048576).toFixed(1) + ' MB'
-async function handle(files) {
-  for (const f of files) {
-    const li = document.createElement('li')
-    li.innerHTML = `<div class="name">${f.name.replace(/</g, '&lt;')}<small>${mb(f.size)}</small></div><span class="st">checking…</span>`
-    list.prepend(li)
-    const st = li.querySelector('.st')
-    try {
-      const r = await check(f)
-      if (r.status === 'ok') { st.textContent = '✓ Already starts fast'; st.className = 'st ok'; continue }
-      if (r.status === 'fragmented') { st.textContent = '✓ Fragmented MP4 (streams already)'; st.className = 'st ok'; continue }
-      if (r.status === 'invalid') { st.textContent = 'Not an MP4/MOV file'; st.className = 'st err'; continue }
-      const moov = r.atoms.find((a) => a.type === 'moov')
-      st.textContent = `Slow: index at ${mb(moov.offset)} of ${mb(f.size)}`; st.className = 'st slow'
-      const btn = document.createElement('button'); btn.textContent = 'Fix'; li.append(btn)
-      btn.onclick = async () => {
-        btn.disabled = true; btn.textContent = 'Fixing…'
-        try {
-          const out = await fix(f, f.type || 'video/mp4')
-          const a = document.createElement('a'); a.className = 'btn'; a.href = URL.createObjectURL(out.blob)
-          a.download = f.name.replace(/(\.\w+)$/, '-faststart$1'); a.textContent = 'Download fixed file'
-          btn.replaceWith(a); st.textContent = '✓ Fixed'; st.className = 'st ok'
-        } catch (e) { btn.remove(); st.textContent = 'Could not fix: ' + e.message; st.className = 'st err' }
-      }
-    } catch (e) { st.textContent = 'Error: ' + e.message; st.className = 'st err' }
-  }
+
+const $ = (s, el = document) => el.querySelector(s)
+const fmt = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(2) + ' GB'
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+// Hero animation distances: moov slides left by the width of mdat, mdat right by moov's width.
+function sizeHero() {
+  const strip = $('#hero-strip'), mdat = $('.a-mdat', strip), moov = $('.a-moov', strip)
+  strip.style.setProperty('--d', mdat.offsetWidth + 3 + 'px')
+  strip.style.setProperty('--m', moov.offsetWidth + 3 + 'px')
+  moov.style.setProperty('--d', mdat.offsetWidth + 3 + 'px'); mdat.style.setProperty('--m', moov.offsetWidth + 3 + 'px')
 }
-input.onchange = () => handle([...input.files])
+sizeHero(); addEventListener('resize', sizeHero)
+
+// A proportional strip of the file's top-level boxes. Tiny boxes get a minimum width so they stay visible.
+function strip(atoms, total) {
+  return '<div class="strip">' + atoms.map((a) => {
+    const cls = ['ftyp', 'mdat', 'moov'].includes(a.type) ? 'a-' + a.type : 'a-other'
+    const pct = Math.max((a.size / total) * 100, a.type === 'moov' ? 5 : 2.2)
+    return `<span class="${cls}" style="flex:${a.type === 'mdat' ? '1 1 ' + pct + '%' : '0 0 ' + pct + '%'}" title="${a.type} · ${fmt(a.size)}">${pct > 6 ? a.type : ''}</span>`
+  }).join('') + '</div>'
+}
+const legend = '<div class="legend"><span><i style="background:var(--ftyp)"></i>header</span><span><i style="background:var(--mdat)"></i>media</span><span><i style="background:var(--moov)"></i>index (moov)</span></div>'
+
+async function handle(file) {
+  const li = document.createElement('li')
+  li.innerHTML = `<div class="row1"><span class="fname">${esc(file.name)}</span><span class="fmeta">${fmt(file.size)}</span></div><p class="state">Reading boxes…</p>`
+  $('#list').prepend(li)
+  const state = $('.state', li)
+  try {
+    const r = await check(file)
+    if (r.status === 'invalid') { state.className = 'state err'; state.innerHTML = '<b>Not an MP4/MOV file.</b> No index box found.'; return }
+    if (r.status === 'fragmented') { state.className = 'state ok'; state.innerHTML = '<b>Fine as is.</b> Fragmented MP4 streams without a front index.'; li.insertAdjacentHTML('beforeend', strip(r.atoms, file.size) + legend); return }
+    if (r.status === 'ok') { state.className = 'state ok'; state.innerHTML = '<b>Already fast.</b> The index comes before the media.'; li.insertAdjacentHTML('beforeend', strip(r.atoms, file.size) + legend); return }
+    const moov = r.atoms.find((a) => a.type === 'moov')
+    state.className = 'state slow'
+    state.innerHTML = `<b>Slow start.</b> The index sits ${fmt(moov.offset)} into the file, after all the media.`
+    li.insertAdjacentHTML('beforeend', strip(r.atoms, file.size) + legend + '<div class="row3"><button class="btn" type="button">Move index to the front</button></div>')
+    const btn = $('.row3 .btn', li)
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = 'Working…'
+      try {
+        const out = await fix(file, file.type || 'video/mp4')
+        const fixed = await check(out.blob)
+        $('.strip', li).outerHTML = strip(fixed.atoms, out.blob.size)
+        state.className = 'state ok'; state.innerHTML = '<b>Fixed.</b> Same size, index now at the front.'
+        const url = URL.createObjectURL(out.blob)
+        $('.row3', li).innerHTML = `<a class="btn" href="${url}" download="${esc(file.name.replace(/(\.\w+)?$/, (m) => '-faststart' + (m || '.mp4')))}">Download fixed file</a>` +
+          (file.type.startsWith('video/') ? `<video src="${url}" controls muted playsinline preload="metadata"></video>` : '')
+      } catch (e) { btn.remove(); state.className = 'state err'; state.innerHTML = `<b>Couldn't fix this one.</b> ${esc(e.message)}` }
+    }
+  } catch (e) { state.className = 'state err'; state.innerHTML = `<b>Couldn't read this file.</b> ${esc(e.message)}` }
+}
+
+const drop = $('#drop'), input = $('#file')
+input.onchange = () => { [...input.files].forEach(handle); input.value = '' }
 ;['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over') }))
 ;['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over') }))
-drop.addEventListener('drop', (e) => handle([...e.dataTransfer.files]))
+drop.addEventListener('drop', (e) => [...e.dataTransfer.files].forEach(handle))
+$('#sample').onclick = async (e) => {
+  e.target.disabled = true
+  const b = await (await fetch('sample-slow.mp4')).blob()
+  await handle(new File([b], 'sample-slow.mp4', { type: 'video/mp4' }))
+  e.target.disabled = false
+}
+document.querySelectorAll('[data-copy]').forEach((b) => b.onclick = async () => {
+  const text = b.nextElementSibling.innerText.split('\n').filter((l) => l && !l.startsWith('#')).join('\n')
+  try { await navigator.clipboard.writeText(text); b.textContent = 'copied' } catch { b.textContent = 'select & copy' }
+  setTimeout(() => (b.textContent = 'copy'), 1600)
+})
 </script>
 </body>
 </html>

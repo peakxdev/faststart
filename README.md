@@ -1,6 +1,10 @@
 # faststart
 
+[![ci](https://github.com/peakxdev/faststart/actions/workflows/ci.yml/badge.svg)](https://github.com/peakxdev/faststart/actions/workflows/ci.yml) [![licence: MIT](https://img.shields.io/badge/licence-MIT-lightgrey.svg)](LICENSE)
+
 **Find and fix MP4/MOV files that start slowly on the web.** Lossless: no re-encoding, same quality, same size.
+
+[![faststart demo page](docs/screenshot.png)](https://peakxdev.github.io/faststart/)
 
 **Try it in your browser:** https://peakxdev.github.io/faststart/ (nothing is uploaded)
 
