@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>faststart: fix slow-starting videos</title>
+<meta name="description" content="Check and fix MP4/MOV files that start slowly on the web. Runs in your browser; nothing is uploaded.">
+<style>
+:root{--bg:#0b0d11;--card:#141821;--line:#262c38;--fg:#eef1f5;--fg2:#a9b1bf;--acc:#3ee0c2;--bad:#f5b041;--err:#f87171}
+@media (prefers-color-scheme: light){:root{--bg:#f6f7f9;--card:#fff;--line:#dfe3ea;--fg:#0f1520;--fg2:#4d5666;--acc:#0b8f78;--bad:#a8650a;--err:#c53030}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:48px 16px 64px}
+h1{font-size:clamp(30px,6vw,46px);letter-spacing:-.03em;margin:0}h1 span{color:var(--acc)}
+p{color:var(--fg2)}code{background:var(--card);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font-size:.9em}
+#drop{display:block;margin-top:24px;border:2px dashed var(--line);border-radius:16px;padding:40px 16px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .2s}
+#drop.over{border-color:var(--acc)}#drop b{display:block;font-size:18px;margin-bottom:4px;color:var(--fg)}
+input[type=file]{display:none}
+ul{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:10px}
+li{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.name{flex:1;min-width:180px;word-break:break-all}.name small{display:block;color:var(--fg2)}
+.st{font-weight:700;font-size:14px}.ok{color:var(--acc)}.slow{color:var(--bad)}.err{color:var(--err)}
+button,a.btn{font:inherit;font-weight:700;font-size:14px;border:0;border-radius:99px;padding:8px 14px;background:var(--acc);color:#04221c;cursor:pointer;text-decoration:none}
+.how{margin-top:36px;border-top:1px solid var(--line);padding-top:20px}
+footer{margin-top:40px;color:var(--fg2);font-size:14px}footer a{color:var(--acc)}
+</style>
+</head>
+<body>
+<main>
+  <h1>fast<span>start</span></h1>
+  <p>Some videos take ages to start on websites and phones, because their index (the <code>moov</code> atom) sits at the <b>end</b> of the file. The player has to fetch the end before it can play the start. Drop your videos here to check them, and fix them without re-encoding: same quality, same size.</p>
+  <label id="drop"><input id="file" type="file" accept="video/mp4,video/quicktime,.mp4,.m4v,.mov,.m4a" multiple><b>Drop MP4 / MOV files here</b>or click to choose. Everything runs in your browser; nothing is uploaded.</label>
+  <ul id="list"></ul>
+  <div class="how">
+    <h2 style="font-size:20px">How it works</h2>
+    <p>The page reads only the atom headers and the index, never the video data. To fix a file it moves the index to the front and updates the chunk offsets inside it, then stitches the original pieces back together. It's the same result as <code>ffmpeg -c copy -movflags +faststart</code>.</p>
+    <p>For folders, servers and CI, use the command-line tool: <code>pip install git+https://github.com/peakxdev/faststart</code>, then <code>faststart check videos/</code>.</p>
+  </div>
+  <footer>Open source (MIT) · <a href="https://github.com/peakxdev/faststart">github.com/peakxdev/faststart</a> · by Peak Software</footer>
+</main>
+<script type="module">
+import { check, fix } from './faststart.js'
+const list = document.getElementById('list'), drop = document.getElementById('drop'), input = document.getElementById('file')
+const mb = (n) => (n / 1048576).toFixed(1) + ' MB'
+async function handle(files) {
+  for (const f of files) {
+    const li = document.createElement('li')
+    li.innerHTML = `<div class="name">${f.name.replace(/</g, '&lt;')}<small>${mb(f.size)}</small></div><span class="st">checking…</span>`
+    list.prepend(li)
+    const st = li.querySelector('.st')
+    try {
+      const r = await check(f)
+      if (r.status === 'ok') { st.textContent = '✓ Already starts fast'; st.className = 'st ok'; continue }
+      if (r.status === 'fragmented') { st.textContent = '✓ Fragmented MP4 (streams already)'; st.className = 'st ok'; continue }
+      if (r.status === 'invalid') { st.textContent = 'Not an MP4/MOV file'; st.className = 'st err'; continue }
+      const moov = r.atoms.find((a) => a.type === 'moov')
+      st.textContent = `Slow: index at ${mb(moov.offset)} of ${mb(f.size)}`; st.className = 'st slow'
+      const btn = document.createElement('button'); btn.textContent = 'Fix'; li.append(btn)
+      btn.onclick = async () => {
+        btn.disabled = true; btn.textContent = 'Fixing…'
+        try {
+          const out = await fix(f, f.type || 'video/mp4')
+          const a = document.createElement('a'); a.className = 'btn'; a.href = URL.createObjectURL(out.blob)
+          a.download = f.name.replace(/(\.\w+)$/, '-faststart$1'); a.textContent = 'Download fixed file'
+          btn.replaceWith(a); st.textContent = '✓ Fixed'; st.className = 'st ok'
+        } catch (e) { btn.remove(); st.textContent = 'Could not fix: ' + e.message; st.className = 'st err' }
+      }
+    } catch (e) { st.textContent = 'Error: ' + e.message; st.className = 'st err' }
+  }
+}
+input.onchange = () => handle([...input.files])
+;['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over') }))
+;['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over') }))
+drop.addEventListener('drop', (e) => handle([...e.dataTransfer.files]))
+</script>
+</body>
+</html>
